@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>طريق الكثبان</title>
+<!-- AdSense. data-adbreak-test="on" = Google test ads for the game ads; delete that attribute to go live. -->
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2572794297000732"
+     crossorigin="anonymous" data-adbreak-test="on" id="adsbygoogle-js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Lalezar&family=Tajawal:wght@400;700&display=swap" rel="stylesheet">
@@ -227,15 +230,16 @@
      ADS SETUP  (edit only this block)
      - publisherId: your AdSense property code, e.g. 'ca-pub-1234567890123456'.
        Leave it empty to run with simulated ads (no real requests).
-     - testMode:    true = Google test ads. Set to false before you go live.
+       It must match the client= of the adsbygoogle.js tag in <head>.
+     - Test ads: controlled by data-adbreak-test="on" on that <head> tag.
+       Delete the attribute to go live.
      - bannerSlot:  optional AdSense display ad unit ID (digits) for the 320x50
        banner. Leave empty to hide the banner.
      Requirements: an AdSense account with H5 Games Ads (Ad Placement API)
      enabled for your domain, and the game served over http(s), not file://.
      ===================================================================== */
   const ADS_CONFIG = {
-    publisherId: '',
-    testMode: true,
+    publisherId: 'ca-pub-2572794297000732',
     bannerSlot: ''
   };
 
@@ -307,13 +311,17 @@
       if (this.sim) return;
       window.adsbygoogle = window.adsbygoogle || [];
       window.adBreak = window.adConfig = function (o) { window.adsbygoogle.push(o); };
-      const sc = document.createElement('script');
-      sc.async = true; sc.crossOrigin = 'anonymous';
-      sc.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=' + encodeURIComponent(ADS_CONFIG.publisherId);
-      if (ADS_CONFIG.testMode) sc.setAttribute('data-adbreak-test', 'on');
-      sc.onload = () => { Ads.live = true; };
-      sc.onerror = () => { Ads.live = false; };
-      document.head.appendChild(sc);
+      // The SDK tag is in <head>; it may already have loaded by now.
+      let sc = document.getElementById('adsbygoogle-js');
+      if (!sc) {
+        sc = document.createElement('script');
+        sc.async = true; sc.crossOrigin = 'anonymous';
+        sc.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=' + encodeURIComponent(ADS_CONFIG.publisherId);
+        document.head.appendChild(sc);
+      }
+      sc.addEventListener('load', () => { Ads.live = true; });
+      sc.addEventListener('error', () => { Ads.live = false; });
+      if (window.adsbygoogle.loaded) Ads.live = true;
       // The game has no sound. If you add sound, call adConfig({ sound: 'on' | 'off' }) when the player toggles it.
       window.adConfig({ sound: 'off', preloadAdBreaks: 'on' });
     },
