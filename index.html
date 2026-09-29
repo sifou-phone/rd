@@ -93,7 +93,7 @@
   .btn.ghost { background: transparent; color: var(--ink); border: 1.5px solid var(--line); }
   .btn:active { transform: translateY(1px); }
   .chip { font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 999px; background: rgba(255,255,255,.28); }
-  .btn.ad .chip { background: color-mix(in srgb, var(--on-accent) 22%, transparent); }
+  .btn.ad .chip { background: rgba(128,128,128,.28); background: color-mix(in srgb, var(--on-accent) 22%, transparent); }
   .record { color: var(--danger); font-weight: 700; margin: -8px 0 12px; }
   .hint { font-size: 13px; color: var(--muted); margin: 12px 0 0; }
 
@@ -112,6 +112,7 @@
   .adbox {
     height: 200px; border-radius: 12px; margin: 10px 0 12px; display: flex; align-items: center; justify-content: center;
     text-align: center; padding: 12px; color: var(--muted);
+    background: repeating-linear-gradient(135deg, transparent 0 14px, rgba(128,128,128,.18) 14px 28px);
     background: repeating-linear-gradient(135deg, transparent 0 14px, color-mix(in srgb, var(--line) 60%, transparent) 14px 28px);
     border: 1.5px dashed var(--line);
   }
@@ -162,12 +163,20 @@
       </div>
     </div>
 
+    <div class="screen" id="scPause" hidden>
+      <div class="card">
+        <h2>متوقفة مؤقتاً</h2>
+        <p>توقفت اللعبة لأنك غادرت الصفحة.</p>
+        <button class="btn" id="btnResume">استئناف</button>
+      </div>
+    </div>
+
     <div class="screen" id="scOver" hidden>
       <div class="card">
         <h2>تحطمت السيارة</h2>
         <div class="stats">
           <div><b id="oScore">0</b><small>المسافة بالمتر</small></div>
-          <div><b id="oCoins">+0</b><small>عملات هذه الجولة</small></div>
+          <div><b id="oCoins" dir="ltr">+0</b><small>عملات هذه الجولة</small></div>
         </div>
         <div class="record" id="oNew" hidden>رقم قياسي جديد</div>
         <button class="btn ad" id="btnContinue"><span>أكمل من مكانك</span><span class="chip">إعلان</span></button>
@@ -195,7 +204,7 @@
 
 <!-- Simulated ad (replace with a real SDK, see Ads object in the script) -->
 <div class="modal" id="ad" hidden role="dialog" aria-modal="true" aria-labelledby="adKind">
-  <div class="card">
+  <div class="card" tabindex="-1">
     <span class="tag">إعلان تجريبي</span>
     <h2 id="adKind" style="margin-top:8px">إعلان</h2>
     <div class="adbox">هنا يظهر الإعلان الحقيقي من شبكة الإعلانات بعد ربط الـ SDK.</div>
@@ -241,13 +250,14 @@
     get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
   };
-  let best = store.get('best', 0);
-  let wallet = store.get('wallet', 0);
+  const num = v => { const n = Math.floor(Number(v)); return Number.isFinite(n) && n > 0 ? n : 0; };
+  let best = num(store.get('best', 0));
+  let wallet = num(store.get('wallet', 0));
 
   /* ---------- Constants ---------- */
   const W = 360, H = 640, LANES = 3, LANE_W = 84;
   const ROAD_X = (W - LANES * LANE_W) / 2;
-  const CAR_W = 42, CAR_H = 76, PY = H - 130;
+  const CAR_W = 42, CAR_H = 76, PY = H - 130, ROW_GAP = 100;
   const ENEMY_COLORS = ['#2f6db5', '#e6a91f', '#4f8a45', '#7b5aa6', '#eeeeee', '#33373d'];
   const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   const laneX = i => ROAD_X + LANE_W * (i + 0.5);
@@ -372,17 +382,19 @@
   // Simulated ad overlay (used only in 'sim' mode)
   function fakeAd(kind, seconds, cb) {
     const el = $('#ad'), cnt = $('#adCount'), close = $('#adClose'), early = $('#adEarly'), wait = $('#adWait');
-    const prev = state; state = 'ad';
+    const prev = state, opener = document.activeElement; state = 'ad';
     $('#adKind').textContent = kind === 'rewarded' ? 'إعلان مكافأة' : 'إعلان بيني';
     let left = seconds;
     cnt.textContent = left; wait.hidden = false; close.hidden = true; early.hidden = kind !== 'rewarded';
     close.textContent = kind === 'rewarded' ? 'استلم المكافأة' : 'إغلاق';
-    el.hidden = false;
+    el.hidden = false; $('#ad .card').focus();
     const iv = setInterval(() => {
       left--; cnt.textContent = Math.max(left, 0);
       if (left <= 0) { clearInterval(iv); wait.hidden = true; close.hidden = false; early.hidden = true; close.focus(); }
     }, 1000);
-    const finish = ok => { clearInterval(iv); el.hidden = true; close.onclick = early.onclick = null; state = prev; cb(ok); };
+    const finish = ok => { clearInterval(iv); el.hidden = true; close.onclick = early.onclick = null; state = prev; cb(ok);
+      if (opener && opener.offsetParent !== null && !opener.disabled) opener.focus();
+      else if (!$('#shop').hidden) $('#shop .card').focus(); };
     close.onclick = () => finish(true);
     early.onclick = () => finish(false);
   }
@@ -408,7 +420,7 @@
   function newRun() {
     g = { speed: 240, dist: 0, coins: 0, coinsRaw: 0, car: carById(selected), shield: carById(selected).shield, lane: 1, px: laneX(1), tx: laneX(1), rot: 0,
           enemies: [], pickups: [], props: [], parts: [], spawnT: 1.2, t: 0, shake: 0, flash: 0,
-          invuln: 0, dead: false, deadT: 0, continued: false, banked: 0, counted: false, doubled: false, hudS: -1, hudC: -1 };
+          invuln: 0, dead: false, deadT: 0, continued: false, banked: 0, counted: false, doubled: false, doubledAmt: 0, lastRow: null, hudS: -1, hudC: -1 };
     for (let i = 0; i < 14; i++) g.props.push(makeProp(rand(-40, H)));
   }
 
@@ -434,8 +446,18 @@
     const free = (Math.random() * LANES) | 0;
     const blocked = [0, 1, 2].filter(l => l !== free);
     const list = Math.random() < 0.25 + 0.5 * diff ? blocked : [blocked[Math.random() < 0.5 ? 0 : 1]];
-    const v = rand(60, 110);
+    // A newer row must never catch up with the previous one and close the free lane:
+    // limit how much faster it may move so the gap stays >= ROW_GAP until the old row leaves.
+    let v = rand(60, 110);
+    const p = g.lastRow;
+    if (p && g.enemies.includes(p)) {
+      const gap = p.y + CAR_H, rel = Math.max(1, g.speed - p.v);
+      const T = (H + 120 - p.y) / rel;
+      v = Math.max(v, p.v - Math.max(0, gap - ROW_GAP) / T);
+    }
+    const start = g.enemies.length;
     list.forEach(l => g.enemies.push({ x: laneX(l), y: -CAR_H, v, c: ENEMY_COLORS[(Math.random() * ENEMY_COLORS.length) | 0], k: ENEMY_KINDS[(Math.random() * ENEMY_KINDS.length) | 0] }));
+    g.lastRow = g.enemies[start];
     if (Math.random() < 0.65) for (let i = 0; i < 3; i++) g.pickups.push({ x: laneX(free), y: -40 - i * 52 });
     g.spawnT = rand(1.0 - 0.3 * diff, 1.5 - 0.5 * diff);
   }
@@ -523,7 +545,7 @@
     const record = score > best;
     if (record) { best = score; store.set('best', best); }
     $('#oScore').textContent = score;
-    $('#oCoins').textContent = '+' + g.coins;
+    $('#oCoins').textContent = '+' + (g.coins + g.doubledAmt);
     $('#oNew').hidden = !record;
     $('#doubleLabel').textContent = 'ضاعف عملاتك (+' + g.coins + ')';
     refreshStats();
@@ -542,6 +564,15 @@
   function revive() {
     g.dead = false; g.continued = true; g.invuln = 2.5; g.rot = 0; g.speed = 240;
     g.enemies = []; g.spawnT = 1.2; state = 'play'; showScreen(null);
+  }
+
+  function pauseGame() {
+    if (state !== 'play' || g.dead) return;
+    state = 'pause'; showScreen('scPause'); $('#btnResume').focus();
+  }
+  function resumeGame() {
+    if (state !== 'pause') return;
+    last = performance.now(); state = 'play'; showScreen(null);
   }
 
   function maybeInterstitial(next) {
@@ -718,7 +749,7 @@
   function loop(now) {
     const dt = Math.min(0.05, (now - last) / 1000); last = now;
     if (state === 'play') updatePlay(dt);
-    else {
+    else if (state !== 'pause') {
       if (state === 'menu') g.speed = reduceMotion ? 0 : 110;
       advance(dt);
     }
@@ -740,11 +771,14 @@
   }
 
   /* ---------- Shop ---------- */
+  let shopOpener = null;
   function renderShop() {
     $('#shopWallet').textContent = wallet;
     $('#freeLabel').textContent = 'احصل على ' + AD_CONFIG.freeCoins + ' عملة';
     $('#btnFree').hidden = !Ads.canReward();
-    const box = $('#garage'); box.textContent = '';
+    const box = $('#garage'), act = document.activeElement;
+    const keepId = box.contains(act) ? act.dataset.id : null;
+    box.textContent = '';
     CARS.forEach(m => {
       const has = owned.includes(m.id), sel = selected === m.id;
       const slot = document.createElement('div'); slot.className = 'slot' + (sel ? ' sel' : '');
@@ -752,7 +786,7 @@
       const c = cvs.getContext('2d'); c.scale(2, 2); drawCarModel(c, 44, 56, 0, 1, m);
       const name = document.createElement('h3'); name.textContent = m.name;
       const desc = document.createElement('p'); desc.textContent = m.desc;
-      const btn = document.createElement('button');
+      const btn = document.createElement('button'); btn.dataset.id = m.id;
       if (sel) { btn.className = 'btn ghost'; btn.textContent = 'مُختارة'; btn.disabled = true; }
       else if (has) { btn.className = 'btn ghost'; btn.textContent = 'اختيار'; btn.onclick = () => selectCar(m.id); }
       else {
@@ -772,6 +806,10 @@
       }
       box.append(slot);
     });
+    if (keepId) {   // rebuilding the buttons drops focus: put it back for keyboard users
+      const b = box.querySelector('button[data-id="' + keepId + '"]');
+      if (b && !b.disabled) b.focus(); else $('#shop .card').focus();
+    }
   }
   function selectCar(id) {
     selected = id; store.set('car', id);
@@ -785,10 +823,14 @@
     selectCar(m.id);
   }
   function openShop() {
+    shopOpener = document.activeElement;
     $('#shop').hidden = false; $('#shop .card').focus();
     Ads.prepareReward('shop-coins', () => !$('#shop').hidden, renderShop);
   }
-  function closeShop() { $('#shop').hidden = true; }
+  function closeShop() {
+    $('#shop').hidden = true;
+    (shopOpener && document.contains(shopOpener) ? shopOpener : $('#btnShop')).focus();
+  }
 
   /* ---------- Events ---------- */
   cv.addEventListener('pointerdown', e => {
@@ -797,12 +839,24 @@
     moveLane(e.clientX < r.left + r.width / 2 ? -1 : 1);
   });
   addEventListener('keydown', e => {
+    if (e.key === 'Tab') {   // keep keyboard focus inside the open dialog
+      const m = [$('#ad'), $('#shop')].find(x => !x.hidden);
+      if (m) {
+        const f = [...m.querySelectorAll('button')].filter(b => !b.disabled && b.offsetParent !== null);
+        if (!f.length) { e.preventDefault(); return; }
+        const i = f.indexOf(document.activeElement);
+        if (e.shiftKey && i <= 0) { e.preventDefault(); f[f.length - 1].focus(); }
+        else if (!e.shiftKey && (i === -1 || i === f.length - 1)) { e.preventDefault(); f[0].focus(); }
+        return;
+      }
+    }
     if (e.key === 'Escape' && !$('#shop').hidden && state !== 'ad') { closeShop(); return; }
     if (e.key === 'ArrowLeft' || e.key === 'a') moveLane(-1);
     else if (e.key === 'ArrowRight' || e.key === 'd') moveLane(1);
   });
   addEventListener('resize', resize);
-  document.addEventListener('visibilitychange', () => { last = performance.now(); });
+  document.addEventListener('visibilitychange', () => { last = performance.now(); if (document.hidden) pauseGame(); });
+  $('#btnResume').onclick = resumeGame;
 
   $('#btnStart').onclick = startGame;
   $('#btnShop').onclick = openShop;
@@ -816,8 +870,8 @@
   $('#btnContinue').onclick = () => Ads.showRewarded(ok => { if (ok) revive(); });
   $('#btnDouble').onclick = () => Ads.showRewarded(ok => {
     if (!ok) return;
-    wallet += g.coins; g.doubled = true; store.set('wallet', wallet);
-    $('#btnDouble').hidden = true; $('#oCoins').textContent = '+' + (g.coins * 2); refreshStats();
+    wallet += g.coins; g.doubled = true; g.doubledAmt = g.coins; store.set('wallet', wallet);
+    $('#btnDouble').hidden = true; $('#oCoins').textContent = '+' + (g.coins + g.doubledAmt); refreshStats();
   });
 
   /* ---------- Boot ---------- */
