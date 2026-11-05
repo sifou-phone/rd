@@ -1,0 +1,11 @@
+{
+  "name": "طريق الكثبان",
+  "short_name": "الكثبان",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f6e3bd",
+  "theme_color": "#e08a3c",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
